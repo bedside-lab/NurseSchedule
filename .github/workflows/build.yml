@@ -24,7 +24,7 @@ jobs:
 
       - name: Build EXE with PyInstaller
         run: |
-          pyinstaller --onefile --windowed --name NurseScheduleApp app.py
+         pyinstaller --onefile --windowed --collect-all ortools --name NurseScheduleApp app.py
 
       - name: Upload EXE as build artifact
         uses: actions/upload-artifact@v4
