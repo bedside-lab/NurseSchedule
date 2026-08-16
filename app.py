@@ -16,7 +16,13 @@ import tkinter as tk
 import webbrowser
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
-from scheduler.core import run_pipeline
+# NOTE: scheduler.core (which pulls in ortools/pandas/openpyxl) is
+# intentionally NOT imported at module load time. Those are large, slow
+# imports, and importing them before any window exists means the app shows
+# nothing at all for several seconds and can look frozen/"not responding".
+# Instead the main window (with a loading splash) is shown immediately, and
+# the heavy import happens in a background thread right after -- see
+# App._load_engine().
 
 APP_VERSION = '1.0.0'
 DEVELOPER_NAME = 'Bedside Lab'
@@ -476,7 +482,30 @@ class App(tk.Tk):
         self.settings = load_settings()
         self.log_queue = queue.Queue()
         self.worker_thread = None
+        self.run_pipeline = None  # filled in once scheduler.core finishes loading
 
+        self._build_splash()
+        threading.Thread(target=self._load_engine, daemon=True).start()
+
+    # ------------------------------------------------------------ startup ---
+    def _build_splash(self):
+        self.splash = tk.Frame(self, bg='white')
+        self.splash.pack(fill='both', expand=True)
+        self._splash_img = tk.PhotoImage(data=LOGO_PNG_B64)
+        holder = tk.Frame(self.splash, bg='white')
+        holder.place(relx=0.5, rely=0.5, anchor='center')
+        tk.Label(holder, image=self._splash_img, bg='white').pack(pady=(0, 16))
+        tk.Label(holder, text='불러오는 중입니다...', font=('', 11), fg='#666666', bg='white').pack()
+
+    def _load_engine(self):
+        # the slow part: importing ortools/pandas/openpyxl. Runs off the main
+        # thread so the window stays visible and responsive while this happens.
+        from scheduler.core import run_pipeline
+        self.run_pipeline = run_pipeline
+        self.after(0, self._on_engine_loaded)
+
+    def _on_engine_loaded(self):
+        self.splash.destroy()
         self._build_ui()
         self.after(150, self._poll_log_queue)
 
@@ -749,7 +778,7 @@ class App(tk.Tk):
         def log(msg):
             self.log_queue.put(('log', str(msg)))
         try:
-            solution, errors = run_pipeline(config, log=log)
+            solution, errors = self.run_pipeline(config, log=log)
             self.log_queue.put(('done', errors))
         except Exception as e:
             self.log_queue.put(('error', str(e)))
