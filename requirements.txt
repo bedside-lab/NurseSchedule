@@ -1,0 +1,4 @@
+ortools>=9.9
+pandas>=2.0
+openpyxl>=3.1
+pyinstaller>=6.0
